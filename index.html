@@ -46,6 +46,7 @@
     </head>
 <body>
     <div id="canvasZone"><canvas id="renderCanvas"></canvas></div>
+    <input type="file" id="file-input" onchange="fileSelectHandler(event)"/>
     <script>
         var canvas = document.getElementById("renderCanvas");
 
@@ -63,18 +64,52 @@
         var createDefaultEngine = function() { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true,  disableWebGL2Support: false}); };
 
         //This allows us to notify on serial data recv and inturn update visual state while decoupled
-        const serialObservable = new BABYLON.Observable();
+        const fileObservable = new BABYLON.Observable();
+
+        function readFileAsync(file) {
+            return new Promise((resolve, reject) => {
+                //const file = event.target.files[0];
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    resolve(event.target.result);
+                };
+                reader.onerror = function(event) {
+                    reject(event.target.error);
+                };
+                reader.readAsText(file);
+            });    
+        }
+
+        async function fileSelectHandler(event) {
+            const file = event.target.files[0];
+            try {
+                const contents = await readFileAsync(file);
+                const allLines = contents.split(/\r\n|\n/);
+                for(const line of allLines){
+                    if(line[0] == 'q'){ //is quaternion
+                        //console.log(line);
+                        var quaternionStr = line.substring(1);
+                        var quaternionArr = quaternionStr.split(',').map(parseFloat)
+                        const timer = ms => new Promise(res => setTimeout(res, ms))    
+                        fileObservable.notifyObservers(quaternionArr);
+                        await timer(104);
+                    }
+                } 
+            } catch (error) {
+                console.error("Error reading file:", error);
+            }
+        }
+
         
         var createScene = async() => {
         	var scene = new BABYLON.Scene(engine);
-        	//scene.clearColor = new BABYLON.Color3( .5, .5, .5);
 
             // source: https://opengameart.org/content/ocean-hdriskybox
             // made into cube map with: https://jaxry.github.io/panorama-to-cubemap/
             var skybox = BABYLON.MeshBuilder.CreateBox("skyBox", {size:1000.0}, scene);
             var skyboxMaterial = new BABYLON.StandardMaterial("skyBox", scene);
             skyboxMaterial.backFaceCulling = false;
-            skyboxMaterial.reflectionTexture = new BABYLON.CubeTexture("assets/cubemap/underwater/", scene);
+            skyboxMaterial.reflectionTexture = new BABYLON.CubeTexture("./assets/cubemap/underwater/", scene);
             skyboxMaterial.reflectionTexture.coordinatesMode = BABYLON.Texture.SKYBOX_MODE;
             skyboxMaterial.diffuseColor = new BABYLON.Color3(0, 0, 0);
             skyboxMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
@@ -94,21 +129,6 @@
         
             //to show the axis
             const localAxes = new BABYLON.AxesViewer(scene, 1); //1 is length
-        
-        	/*********************Create Box***************/
-            /*
-        	var faceColors = [];
-        	faceColors[0] = BABYLON.Color3.Blue();
-        	faceColors[1] = BABYLON.Color3.White()
-        	faceColors[2] = BABYLON.Color3.Red();
-        	faceColors[3] = BABYLON.Color3.Black();
-        	faceColors[4] = BABYLON.Color3.Green();
-        	faceColors[5] = BABYLON.Color3.Yellow();
-         
-        	//var mesh = BABYLON.MeshBuilder.CreateBox("Box", {faceColors:faceColors,height:2,width:2,depth:6}, scene, true);
-            //mesh.material = new BABYLON.StandardMaterial("", scene);
-            //mesh.rotation.y = Math.PI;
-            */
 
             /*********************Create GLIDE***************/
             const result = await BABYLON.SceneLoader.ImportMeshAsync(null, "./assets/models/", "G.L.I.D.E Body.gltf", scene);
@@ -155,7 +175,7 @@
             textYaw.color = "black";
             advancedTexture.addControl(textYaw);
 
-            var button1 = BABYLON.GUI.Button.CreateSimpleButton("but1", "Click to Connect Arduino");
+            var button1 = BABYLON.GUI.Button.CreateSimpleButton("but1", "Click to Open SDL File");
             button1.width = "220px"
             button1.height = "40px";
             button1.top = -200
@@ -163,38 +183,10 @@
             button1.cornerRadius = 4;
             button1.background = "orange";
             button1.onPointerUpObservable.add(async () => {
-                const port = await navigator.serial.requestPort();
-                await port.open({ baudRate: 115200 });
-                const reader = port.readable.getReader();
+                document.getElementById('file-input').click();
 
                 //Remove button
                 advancedTexture.removeControl(button1);
-
-                // Listen to data coming from the Arduino serial port.
-                while (true) {
-                    const { value, done } = await reader.read();
-
-                    if(value){
-                        /* roll and pitch only
-                        if (value.byteLength >= 8) {
-                            let floatArray = new Float32Array(value.buffer.slice(0, 8));
-                            console.log(`Roll: ${floatArray[0]}, Pitch: ${floatArray[1]}`);
-                            serialObservable.notifyObservers([floatArray[0], floatArray[1]]);                          
-                        }
-                        */
-                        if (value.byteLength >= 16) {
-                            let floatArray = new Float32Array(value.buffer.slice(0, 16));
-                            console.log(`w: ${floatArray[0]}, x: ${floatArray[1]}, y: ${floatArray[2]}, z: ${floatArray[3]}`);
-                            serialObservable.notifyObservers([floatArray[0], floatArray[1], floatArray[2], floatArray[3]]);                          
-                        }        
-                    }
-                    if (done) {
-                        console.log("Serial recv done");
-                        // Allow the serial port to be closed later.
-                        reader.releaseLock();
-                        break;
-                    }
-                }
             });
             //Add button
             advancedTexture.addControl(button1);
@@ -206,24 +198,21 @@
             })
             
             /*********************Update model rotation logic***************/
-            serialObservable.add(([w,x,y,z]) => {
-                //console.log(`Roll: ${sensorRoll}, Pitch: ${sensorPitch}`);
+            fileObservable.add(([w,x,y,z]) => {
                 /*
-                var pitch = sensorPitch*Math.PI/180;
-                var roll =  sensorRoll*Math.PI/180;
-                var yaw =  sensorYaw*Math.PI/180;
-
-                textPitch.text = "Pitch:"+Math.floor(sensorRoll);
-                textRoll.text = "Roll:"+Math.floor(sensorPitch);
-                textYaw.text = "Yaw:"+Math.floor(sensorYaw);
-
-                mesh.rotation.x = -pitch;
-                mesh.rotation.z = roll;
-                mesh.rotation.y = -yaw;
+                var lerpTime = 104; //millisecs
+                var interpolations = lerpTime*20; 
+                var deltaTime = lerpTime / interpolations; //millisecs
+                var resquat = BABYLON.Quaternion.Zero();
+                var src = mesh.rotationQuaternion ? mesh.rotationQuaternion.clone() : BABYLON.Quaternion.Identity(); // if not init use no rotation
+                var dest = new BABYLON.Quaternion(y,z,x,w)
+                for (let currentTime = 0; currentTime <= lerpTime; currentTime += deltaTime) {
+                    BABYLON.Quaternion.SmoothToRef(src, dest, currentTime, lerpTime, resquat)
+                    mesh.rotationQuaternion = resquat;
+                }
                 */
-                //mesh.rotationQuaternion = new BABYLON.Quaternion.RotationAxis(new BABYLON.Vector3(2, 6, 4), w);
-                //mesh.rotationQuaternion = new BABYLON.Quaternion(y,x,z,w); upa nd down
-                mesh.rotationQuaternion = new BABYLON.Quaternion(y,z,x,w); //upa nd down
+
+                mesh.rotationQuaternion = new BABYLON.Quaternion(y,z,x,w)
             });
         
             localAxes.xAxis.parent = mesh;

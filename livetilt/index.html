@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+        <title>G.L.I.D.E. Tilt Sensor Demo</title>
+
+        <!-- Babylon.js -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.6.2/dat.gui.min.js"></script>
+        <script src="https://assets.babylonjs.com/generated/Assets.js"></script>
+        <script src="https://cdn.babylonjs.com/recast.js"></script>
+        <script src="https://cdn.babylonjs.com/ammo.js"></script>
+        <script src="https://cdn.babylonjs.com/havok/HavokPhysics_umd.js"></script>
+        <script src="https://cdn.babylonjs.com/cannon.js"></script>
+        <script src="https://cdn.babylonjs.com/Oimo.js"></script>
+        <script src="https://cdn.babylonjs.com/earcut.min.js"></script>
+        <script src="https://cdn.babylonjs.com/babylon.js"></script>
+        <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+        <script src="https://cdn.babylonjs.com/proceduralTexturesLibrary/babylonjs.proceduralTextures.min.js"></script>
+        <script src="https://cdn.babylonjs.com/postProcessesLibrary/babylonjs.postProcess.min.js"></script>
+        <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.js"></script>
+        <script src="https://cdn.babylonjs.com/serializers/babylonjs.serializers.min.js"></script>
+        <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+        <script src="https://cdn.babylonjs.com/inspector/babylon.inspector.bundle.js"></script>
+
+        <style>
+            html, body {
+                overflow: hidden;
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+
+            #renderCanvas {
+                width: 100%;
+                height: 100%;
+                touch-action: none;
+            }
+            
+            #canvasZone {
+                width: 100%;
+                height: 100%;
+            }
+        </style>
+    </head>
+<body>
+    <div id="canvasZone"><canvas id="renderCanvas"></canvas></div>
+    <script>
+        var canvas = document.getElementById("renderCanvas");
+
+        var startRenderLoop = function (engine, canvas) {
+            engine.runRenderLoop(function () {
+                if (sceneToRender && sceneToRender.activeCamera) {
+                    sceneToRender.render();
+                }
+            });
+        }
+
+        var engine = null;
+        var scene = null;
+        var sceneToRender = null;
+        var createDefaultEngine = function() { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true,  disableWebGL2Support: false}); };
+
+        //This allows us to notify on serial data recv and inturn update visual state while decoupled
+        const serialObservable = new BABYLON.Observable();
+        
+        var createScene = async() => {
+        	var scene = new BABYLON.Scene(engine);
+
+            // source: https://opengameart.org/content/ocean-hdriskybox
+            // made into cube map with: https://jaxry.github.io/panorama-to-cubemap/
+            var skybox = BABYLON.MeshBuilder.CreateBox("skyBox", {size:1000.0}, scene);
+            var skyboxMaterial = new BABYLON.StandardMaterial("skyBox", scene);
+            skyboxMaterial.backFaceCulling = false;
+            skyboxMaterial.reflectionTexture = new BABYLON.CubeTexture("assets/cubemap/underwater/", scene);
+            skyboxMaterial.reflectionTexture.coordinatesMode = BABYLON.Texture.SKYBOX_MODE;
+            skyboxMaterial.diffuseColor = new BABYLON.Color3(0, 0, 0);
+            skyboxMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
+            skybox.material = skyboxMaterial;
+        
+        	// camera 1
+        	var camera1 = new BABYLON.ArcRotateCamera("camera1",  3 * Math.PI / 8, 3 * Math.PI / 8, 15, new BABYLON.Vector3(0, 2, 0), scene);
+        	camera1.attachControl(canvas, true);
+        
+          
+        	// lights
+        	var light1 = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(1, 0.5, 0), scene);
+        	light1.intensity = 0.7;
+        	var light2 = new BABYLON.HemisphericLight("light2", new BABYLON.Vector3(-1, -0.5, 0), scene);
+        	light2.intensity = 0.8;
+          
+        
+            //to show the axis
+            const localAxes = new BABYLON.AxesViewer(scene, 1); //1 is length
+
+            /*********************Create GLIDE***************/
+            const result = await BABYLON.SceneLoader.ImportMeshAsync(null, "./assets/models/", "G.L.I.D.E Body.gltf", scene);
+            var mesh = result.meshes[0];
+            result.meshes[263].material.transparencyMode = null
+            //Leave this. 
+            //Useful for Onshape gltf files to find out which meshes have reference to materials 
+            //e.g. index 263 has the "acrylic" material
+            //for(i =1; i <result.meshes.length; i++){
+                //console.log(result.meshes[i].material.id)
+            //}
+            result.meshes[263].material.alpha = 0.18;
+
+            mesh.scaling = new BABYLON.Vector3(20, 20, 20);
+
+
+            mesh.rotationQuaternion = undefined;
+            mesh.rotation.x = Math.PI / 2;
+            mesh.rotation.y = Math.PI;
+            mesh.bakeCurrentTransformIntoVertices(); //Sets new "normal"
+            mesh.rotation.y = Math.PI;
+
+
+
+            /*********************Create UI***************/
+
+            var advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+
+            var textPitch = new BABYLON.GUI.TextBlock();
+            textPitch.fontSize = 32;
+            textPitch.top = -150;
+            textPitch.color = "black";
+            advancedTexture.addControl(textPitch);
+
+            var textRoll = new BABYLON.GUI.TextBlock();
+            textRoll.fontSize = 32;
+            textRoll.top = -120;
+            textRoll.color = "black";
+            advancedTexture.addControl(textRoll);
+
+            var textYaw = new BABYLON.GUI.TextBlock();
+            textYaw.fontSize = 32;
+            textYaw.top = -90;
+            textYaw.color = "black";
+            advancedTexture.addControl(textYaw);
+
+            var button1 = BABYLON.GUI.Button.CreateSimpleButton("but1", "Click to Connect Arduino");
+            button1.width = "220px"
+            button1.height = "40px";
+            button1.top = -200
+            button1.color = "black";
+            button1.cornerRadius = 4;
+            button1.background = "orange";
+            button1.onPointerUpObservable.add(async () => {
+                const port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+                const reader = port.readable.getReader();
+
+                //Remove button
+                advancedTexture.removeControl(button1);
+
+                // Listen to data coming from the Arduino serial port.
+                while (true) {
+                    const { value, done } = await reader.read();
+
+                    if(value){
+                        if (value.byteLength >= 16) {
+                            let floatArray = new Float32Array(value.buffer.slice(0, 16));
+                            //console.log(`w: ${floatArray[0]}, x: ${floatArray[1]}, y: ${floatArray[2]}, z: ${floatArray[3]}`);
+                            serialObservable.notifyObservers([floatArray[0], floatArray[1], floatArray[2], floatArray[3]]);                          
+                        }        
+                    }
+                    if (done) {
+                        console.log("Serial recv done");
+                        // Allow the serial port to be closed later.
+                        reader.releaseLock();
+                        break;
+                    }
+                }
+            });
+            //Add button
+            advancedTexture.addControl(button1);
+            button1.onPointerEnterObservable.add(() => {
+                document.body.style.cursor='pointer'
+            })
+            button1.onPointerOutObservable.add(() => {
+                document.body.style.cursor=''
+            })
+            
+            /*********************Update model rotation logic***************/
+            serialObservable.add(([w,x,y,z]) => {
+                mesh.rotationQuaternion = new BABYLON.Quaternion(y,z,x,w); 
+                //mesh.rotationQuaternion = new BABYLON.Quaternion.Zero();
+            });
+        
+            localAxes.xAxis.parent = mesh;
+            localAxes.yAxis.parent = mesh;
+            localAxes.zAxis.parent = mesh;
+         
+        	return scene;  
+        }
+
+           window.initFunction = async function() {
+                    var asyncEngineCreation = async function() {
+                        try {
+                        return createDefaultEngine();
+                        } catch(e) {
+                        console.log("the available createEngine function failed. Creating the default engine instead");
+                        return createDefaultEngine();
+                        }
+                    }
+
+                    window.engine = await asyncEngineCreation();
+        if (!engine) throw 'engine should not be null.';
+        startRenderLoop(engine, canvas);
+        window.scene = await createScene();};
+        initFunction().then(() => {sceneToRender = scene                    
+        });
+
+        // Resize
+        window.addEventListener("resize", function () {
+            engine.resize();
+        });
+    </script>
+</body>
+</html>

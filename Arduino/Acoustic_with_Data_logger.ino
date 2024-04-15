@@ -16,8 +16,8 @@ void setup() {
   Serial.begin(115200);
   mySerial.begin(115200);
 
-  // serial data logger setup
-  myFile = SD.open("file.txt", FILE_WRITE);
+  // // serial data logger setup
+  // myFile = SD.open("file.txt", FILE_WRITE);
 
 }
 void loop() { 

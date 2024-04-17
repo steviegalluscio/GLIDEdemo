@@ -63,12 +63,11 @@
         var sceneToRender = null;
         var createDefaultEngine = function() { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true,  disableWebGL2Support: false}); };
 
-        //This allows us to notify on serial data recv and inturn update visual state while decoupled
+        //This allows us to notify on data update and inturn update visual state while decoupled
         const fileObservable = new BABYLON.Observable();
 
         function readFileAsync(file) {
             return new Promise((resolve, reject) => {
-                //const file = event.target.files[0];
                 const reader = new FileReader();
                 reader.onload = function(event) {
                     resolve(event.target.result);
@@ -127,8 +126,30 @@
         	light2.intensity = 0.8;
           
         
-            //to show the axis
+            // to show the axis
             const localAxes = new BABYLON.AxesViewer(scene, 1); //1 is length
+
+
+            /*********************Create Distance Visual***************/
+            // create cylinder to show distance sensor
+            let cylinder = null;
+            const laser = new BABYLON.StandardMaterial('material', scene);
+            laser.diffuseColor = BABYLON.Color3.Green();
+            laser.alpha = 0.25;
+
+            // Show distance sensor visual
+            function showDistance(distance, rotationQuaternion){
+                if (cylinder) {
+                    cylinder.dispose();   
+                }
+                cylinder = BABYLON.MeshBuilder.CreateCylinder("cylinder", {diameter:0.20,height:distance}, scene);
+                cylinder.material = laser;
+                cylinder.rotationQuaternion = null;
+                cylinder.rotation.x = Math.PI / 2;
+                cylinder.position.z = (distance / 2)+3.1;
+                cylinder.bakeCurrentTransformIntoVertices();
+                cylinder.rotationQuaternion = rotationQuaternion; 
+            }
 
             /*********************Create GLIDE***************/
             const result = await BABYLON.SceneLoader.ImportMeshAsync(null, "./assets/models/", "G.L.I.D.E Body.gltf", scene);
@@ -211,8 +232,10 @@
                     mesh.rotationQuaternion = resquat;
                 }
                 */
-
-                mesh.rotationQuaternion = new BABYLON.Quaternion(y,z,x,w)
+                var dist = Math.floor(Math.random() * 9) + 2; //rnadom int form 2 to 10 inclusive
+                rq = new BABYLON.Quaternion(y,z,x,w)
+                mesh.rotationQuaternion = rq;
+                showDistance(dist, rq)
             });
         
             localAxes.xAxis.parent = mesh;

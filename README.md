@@ -4,3 +4,5 @@
 
 [Live Tilt Sensor Demo](https://steviegalluscio.github.io/GLIDEdemo/livetilt)
 
+
+[Live Distance and Tilt Sensor Demo](https://steviegalluscio.github.io/GLIDEdemo/liveacousticandtilt)
